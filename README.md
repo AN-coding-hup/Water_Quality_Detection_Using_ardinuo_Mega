@@ -1,5 +1,5 @@
-# Water_Quality_Detection_Using_ardinuo_Mega
-Arduino Mega  Project
+// Water_Quality_Detection_Using_ardinuo_Mega
+//Arduino Mega  Project
 #include <Wire.h>
 #include <SoftwareSerial.h>
 #include <DHT.h>
@@ -56,33 +56,13 @@ void setup() {
   bluetooth.begin(9600);
   sim800l.begin(9600);
 
-  // Initialize LCD
+  // Initialize LCD (20x4)
   lcd.begin(20, 4);
   lcd.backlight();
-  
-  // Display Welcome Message
-  lcd.setCursor(0, 0);
-  lcd.print("Welcome to");
-  lcd.setCursor(0, 1);
-  lcd.print("Department of Zoology");
-  lcd.setCursor(0, 2);
-  lcd.print("The Islamia University");
-  lcd.setCursor(0, 3);
-  lcd.print("of Bahawalpur");
-  delay(5000);
-  
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("IoT Based:");
-  lcd.setCursor(0, 1);
-  lcd.print("Determination of");
-  lcd.setCursor(0, 2);
-  lcd.print("Physicochemical");
-  lcd.setCursor(0, 3);
-  lcd.print("Parameters of Fish Ponds");
-  delay(5000);
-  lcd.clear();
-  
+  lcd.print("Initializing...");
+
   // Initialize Sensors
   dht.begin();
   gravityTds.setPin(TdsSensorPin);
@@ -96,21 +76,30 @@ void setup() {
 
   timer.setInterval(500L, display_pHValue);
   delay(2000);
+  lcd.clear();
 }
 
 void loop() {
   timer.run();
 
+  // Read Temperature & Humidity
   float h = dht.readHumidity();
   float t = dht.readTemperature();
+
+  // Read TDS Sensor
   gravityTds.setTemperature(t);
   gravityTds.update();
   tdsValue = gravityTds.getTdsValue();
+
+  // Read Turbidity Sensor
   int turbidityValue = analogRead(turbidityPin);
   float turbidityVoltage = turbidityValue * (5.0 / 1024.0);
   float turbidity = -1120.4 * turbidityVoltage * turbidityVoltage + 5742.3 * turbidityVoltage - 4352.9;
+
+  // Read Gas Sensor
   int gasValue = analogRead(gasPin);
 
+  // Read Flow Sensor
   if (millis() - lastTime > 1000) {
     flowRate = 2.663 * pulse;
     totalVolume += flowRate;
@@ -118,10 +107,19 @@ void loop() {
     lastTime = millis();
   }
 
-  // pH Sensor Reading
+  // Read pH Sensor
   for (int i = 0; i < 10; i++) {
     buffer_arr[i] = analogRead(A0);
     delay(30);
+  }
+  for (int i = 0; i < 9; i++) {
+    for (int j = i + 1; j < 10; j++) {
+      if (buffer_arr[i] > buffer_arr[j]) {
+        temp = buffer_arr[i];
+        buffer_arr[i] = buffer_arr[j];
+        buffer_arr[j] = temp;
+      }
+    }
   }
   unsigned long avgval = 0;
   for (int i = 2; i < 8; i++) {
@@ -130,55 +128,102 @@ void loop() {
   float volt = (float)avgval * 5.0 / 1024 / 6;
   ph_act = -5.70 * volt + calibration_value;
 
-  // Display Data in a Pattern
+  // Display Data Sequentially
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("********************");
+  lcd.print("Temp: ");
+  lcd.print(t);
+  lcd.print(" C");
   lcd.setCursor(0, 1);
-  lcd.print(" Temp: "); lcd.print(t); lcd.print(" C ");
-  lcd.setCursor(0, 2);
-  lcd.print(" Humidity: "); lcd.print(h); lcd.print("% ");
-  lcd.setCursor(0, 3);
-  lcd.print("********************");
-  delay(5000);
+  lcd.print("Humidity: ");
+  lcd.print(h);
+  lcd.print("%");
+  delay(2000);
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("********************");
+  lcd.print("pH: ");
+  lcd.print(ph_act, 2);
   lcd.setCursor(0, 1);
-  lcd.print(" pH: "); lcd.print(ph_act, 2);
-  lcd.setCursor(0, 2);
-  lcd.print(" TDS: "); lcd.print(tdsValue, 0); lcd.print(" ppm");
-  lcd.setCursor(0, 3);
-  lcd.print("********************");
-  delay(5000);
+  lcd.print("TDS: ");
+  lcd.print(tdsValue, 0);
+  lcd.print(" ppm");
+  delay(2000);
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("********************");
-  lcd.setCursor(0, 1);
-  lcd.print(" Turbidity: "); lcd.print(turbidity, 1); lcd.print(" NTU");
-  lcd.setCursor(0, 3);
-  lcd.print("********************");
-  delay(5000);
+  lcd.print("Turbidity: ");
+  lcd.print(turbidity, 1);
+  lcd.print(" NTU");
+  delay(2000);
 
   lcd.clear();
   lcd.setCursor(0, 0);
-  lcd.print("********************");
+  lcd.print("Flow: ");
+  lcd.print(flowRate, 1);
+  lcd.print(" mL/s");
   lcd.setCursor(0, 1);
-  lcd.print(" Flow: "); lcd.print(flowRate, 1); lcd.print(" mL/s");
-  lcd.setCursor(0, 2);
-  lcd.print(" Gas: "); lcd.print(gasValue);
-  lcd.setCursor(0, 3);
-  lcd.print("********************");
-  delay(5000);
+  lcd.print("Gas: ");
+  lcd.print(gasValue);
+  delay(2000);
+
+  // Send Data via Bluetooth (HC-05)
+  sendBluetoothData(t, h, ph_act, tdsValue, turbidity, flowRate, gasValue);
+
+  // Send SMS Alert
+  String smsMessage = "Temp: " + String(t) + " C, Hum: " + String(h) + " %, pH: " + String(ph_act, 2) +
+                      " TDS: " + String(tdsValue, 0) + " ppm, Turb: " + String(turbidity, 1) +
+                      " NTU, Flow: " + String(flowRate, 1) + " mL/s, Gas: " + String(gasValue);
+  sendSMS("+923009673468", smsMessage);
+
+  if (gasValue > 200) {
+    analogWrite(BUZZER_PIN, 50);
+    sendSMS("+1234567890", "GAS ALERT! Gas level is high.");
+  } else {
+    analogWrite(BUZZER_PIN, 0);
+  }
 }
 
+// Interrupt for Flow Sensor
 void increase() {
   pulse++;
 }
 
+// Function to Display pH Value in Serial Monitor
 void display_pHValue() {
   Serial.print("pH Value: ");
   Serial.println(ph_act, 2);
+}
+
+// Function to Send SMS via GSM (SIM800L)
+void sendSMS(String phoneNumber, String message) {
+  sim800l.println("AT+CMGF=1");
+  delay(1000);
+  sim800l.println("AT+CMGS=\"" + phoneNumber + "\"");
+  delay(1000);
+  sim800l.print(message);
+  delay(1000);
+  sim800l.write(26);
+  delay(1000);
+  Serial.println("SMS Sent: " + message);
+}
+
+// Function to Send Data via Bluetooth (HC-05)
+void sendBluetoothData(float temp, float hum, float ph, float tds, float turbidity, float flow, int gas) {
+  bluetooth.print("Temp: ");
+  bluetooth.print(temp);
+  bluetooth.print(" C, Hum: ");
+  bluetooth.print(hum);
+  bluetooth.print("%, pH: ");
+  bluetooth.print(ph, 2);
+  bluetooth.print(", TDS: ");
+  bluetooth.print(tds, 0);
+  bluetooth.print(" ppm, Turb: ");
+  bluetooth.print(turbidity, 1);
+  bluetooth.print(" NTU, Flow: ");
+  bluetooth.print(flow, 1);
+  bluetooth.print(" mL/s, Gas: ");
+  bluetooth.println(gas);
+
+  Serial.println("Data sent via Bluetooth");
 }
